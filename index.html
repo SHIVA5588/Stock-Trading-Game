@@ -1,0 +1,592 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Simulated Trading Game — Single File</title>
+  <style>
+    :root{font-family:Inter,system-ui,Segoe UI,Roboto,"Helvetica Neue",Arial;margin:0;padding:0}
+    body{background:#0b1220;color:#e6eef8;display:flex;flex-direction:column;min-height:100vh}
+    header{background:linear-gradient(90deg,#0f1724,#071126);padding:12px 20px;display:flex;align-items:center;justify-content:space-between}
+    header h1{font-size:18px;margin:0}
+    .container{display:grid;grid-template-columns:260px 1fr 340px;gap:12px;padding:12px}
+    .card{background:#071224;border-radius:10px;padding:10px;box-shadow:0 6px 18px rgba(2,6,23,.6)}
+    .sidebar{height:calc(100vh - 150px);overflow:auto}
+    .stocks{height:calc(100vh - 150px);overflow:auto}
+    .rightpanel{height:calc(100vh - 150px);overflow:auto}
+    .stock-item{display:flex;align-items:center;justify-content:space-between;padding:8px;border-radius:8px;margin-bottom:8px;border:1px solid rgba(255,255,255,.03)}
+    .stock-left{display:flex;align-items:center;gap:10px}
+    .ticker{font-weight:700}
+    .price{font-family:monospace}
+    .btn{background:#0ea5a5;color:#021018;padding:6px 10px;border-radius:8px;border:none;cursor:pointer}
+    .btn.secondary{background:transparent;color:#9fb3c8;border:1px solid rgba(255,255,255,.06)}
+    .leaderboard-row{display:flex;justify-content:space-between;padding:6px 8px;border-bottom:1px dashed rgba(255,255,255,.02)}
+    .modal{position:fixed;inset:0;background:rgba(2,6,23,.85);display:flex;align-items:center;justify-content:center;z-index:60}
+    .modal .box{background:#081526;padding:18px;border-radius:10px;width:640px;max-width:96%}
+    input,select{padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,.05);background:#072031;color:#e6eef8;width:100%}
+    .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    footer{padding:10px;text-align:center;color:#9fb3c8}
+    .small{font-size:12px;color:#9fb3c8}
+    .spark{width:120px;height:32px}
+    .highlight{color:#a7f3d0}
+    .dead{opacity:.35;text-decoration:line-through}
+    .table{width:100%;border-collapse:collapse}
+    .table th,.table td{padding:6px;border-bottom:1px dashed rgba(255,255,255,.03);text-align:left}
+    
+    /* Auth page styles */
+    #authPage{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
+    .auth-container{background:#071224;border-radius:10px;padding:24px;width:100%;max-width:400px;box-shadow:0 6px 18px rgba(2,6,23,.6)}
+    .auth-container h2{text-align:center;margin-top:0;margin-bottom:20px}
+    .auth-form{display:flex;flex-direction:column;gap:12px}
+    .auth-tabs{display:flex;margin-bottom:16px;border-bottom:1px solid rgba(255,255,255,.1)}
+    .auth-tab{flex:1;text-align:center;padding:10px;cursor:pointer;border-bottom:2px solid transparent}
+    .auth-tab.active{color:#0ea5a5;border-bottom-color:#0ea5a5}
+    .auth-form input{width:100%;box-sizing:border-box}
+    .auth-form button{margin-top:8px}
+    .auth-error{color:#f87171;font-size:14px;text-align:center;margin-top:8px}
+    .auth-switch{text-align:center;margin-top:16px;font-size:14px}
+    .auth-switch a{color:#0ea5a5;cursor:pointer}
+  </style>
+</head>
+<body>
+  <!-- Auth Page (shown first) -->
+  <div id="authPage">
+    <div class="auth-container">
+      <h2>Trading Game</h2>
+      <div class="auth-tabs">
+        <div class="auth-tab active" id="loginTab">Login</div>
+        <div class="auth-tab" id="registerTab">Register</div>
+      </div>
+      
+      <!-- Login Form -->
+      <form class="auth-form" id="loginForm">
+        <div>
+          <label for="loginEmail">Email</label>
+          <input type="email" id="loginEmail" required>
+        </div>
+        <div>
+          <label for="loginPassword">Password</label>
+          <input type="password" id="loginPassword" required>
+        </div>
+        <button type="submit" class="btn">Login</button>
+        <div class="auth-error" id="loginError"></div>
+        <div class="auth-switch">
+          Don't have an account? <a id="showRegister">Register</a>
+        </div>
+      </form>
+      
+      <!-- Register Form -->
+      <form class="auth-form" id="registerForm" style="display:none">
+        <div>
+          <label for="registerFullName">Full Name</label>
+          <input type="text" id="registerFullName" required>
+        </div>
+        <div>
+          <label for="registerEmail">Email</label>
+          <input type="email" id="registerEmail" required>
+        </div>
+        <div>
+          <label for="registerPassword">Password</label>
+          <input type="password" id="registerPassword" required>
+        </div>
+        <button type="submit" class="btn">Register</button>
+        <div class="auth-error" id="registerError"></div>
+        <div class="auth-switch">
+          Already have an account? <a id="showLogin">Login</a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Main App (hidden initially) -->
+  <div id="mainApp" style="display:none">
+    <header>
+      <h1>Trading Game — 5 Rounds • 30 Players • Min Balance ₹3,00,000</h1>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn" id="createLobbyBtn">Create Lobby (host)</button>
+        <button class="btn" id="startGameBtn" disabled>Start Game (host only)</button>
+        
+        <button class="btn secondary" id="logoutBtn">Logout</button>
+        <button class="btn" id="resetPlayersBtn">Reset Players</button>
+      </div>
+    </header>
+
+    <div class="container">
+      <aside class="card sidebar">
+        <h3>Round & Timer</h3>
+        <div id="roundInfo" style="margin-bottom:12px">Round: <span id="roundNum">0</span> / 5</div>
+        <div id="timer" style="font-size:20px">00:00</div>
+        <div style="margin-top:12px">
+          <div class="small">Only the lobby host can start rounds. Host can also transfer host role.</div>
+        </div>
+
+        <hr style="margin:12px 0;border:none;border-top:1px solid rgba(255,255,255,.03)" />
+        <h3>Leaderboard</h3>
+        <div id="leaderboard"></div>
+
+        <hr style="margin:12px 0;border:none;border-top:1px solid rgba(255,255,255,.03)" />
+        <h3>Players (30 max)</h3>
+        <div id="playersList"></div>
+      </aside>
+
+      <main class="card stocks">
+        <h3>Stocks (50 simulated NSE stocks)</h3>
+        <p class="small">Prices update every 7 seconds. Click a stock to open trade / details popup (only visible after clicking).</p>
+        <div id="stocksContainer"></div>
+      </main>
+
+      <section class="card rightpanel">
+        <h3>Your Account</h3>
+        <div id="accountArea">
+          <div id="accountInfo"></div>
+          <hr />
+          <h4>Your Portfolio</h4>
+          <div id="portfolio"></div>
+        </div>
+
+        <hr />
+        <h3>Round Results</h3>
+        <div id="roundLog"></div>
+      </section>
+    </div>
+
+    <footer class="card">
+      <div class="small">This is a client-side single-file simulation. Stock list is simulated for demo purposes (50 sample NSE tickers). All data stored in browser localStorage for persistence.</div>
+    </footer>
+
+    <!-- Modal template -->
+    <div id="modal" class="modal" style="display:none">
+      <div class="box">
+        <h3 id="modalTitle">Trade / Details</h3>
+        <div id="modalBody"></div>
+        <div style="margin-top:10px;display:flex;gap:8px;justify-content:flex-end">
+          <button class="btn secondary" id="modalClose">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+(function(){
+  // ----- Configuration -----
+  const TOTAL_PLAYERS = 30;
+  const STARTING_BALANCE = 300000; // ₹3,00,000
+  const STOCK_COUNT = 50;
+  const ROUND_COUNT = 5;
+  const ROUND_DURATION_MS = 5 * 60 * 1000; // 5 minutes per round
+  const PRICE_UPDATE_MS = 7000; // 7 seconds
+  const ELIMINATE_PER_ROUND = 6; // bottom 6 eliminated
+
+  // ----- State -----
+  let stocks = [];
+  let players = []; // {id,fullName,email,password,balance,holdings:{ticker:{qty,avg}},active:true,eliminated:false}
+  let currentRound = 0;
+  let roundTimer = null;
+  let priceInterval = null;
+  let roundEndTimestamp = null;
+  let loggedInPlayerId = null;
+  let hostId = null; // player id of host
+
+  const el = id => document.getElementById(id);
+
+  // ----- Utilities -----
+  function rand(min,max){return Math.random()*(max-min)+min}
+  function money(n){return '₹' + Number(n).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}
+  function saveState(){localStorage.setItem('trading_game_state', JSON.stringify({stocks,players,currentRound,hostId,loggedInPlayerId}));}
+  function loadState(){const s=localStorage.getItem('trading_game_state');if(s){const obj=JSON.parse(s);stocks=obj.stocks||stocks;players=obj.players||players;currentRound=obj.currentRound||0;hostId=obj.hostId||null;loggedInPlayerId=obj.loggedInPlayerId||null}}
+
+  // ----- Sample 50 NSE tickers (simulated names) -----
+  const sampleTickers = [
+    'RELIANCE','TCS','HDFCBANK','INFY','HDFC','ICICIBANK','BHARTIARTL','KOTAKBANK','LT','ITC',
+    'SBIN','AXISBANK','SUNPHARMA','BAJAJ-AUTO','BAJFINANCE','MARUTI','WIPRO','TITAN','NTPC','ONGC',
+    'HINDUNILVR','POWERGRID','ULTRACEMCO','ADANIPORTS','JSWSTEEL','DRREDDY','BPCL','EICHER','GRASIM','TATAMOTORS',
+    'TATACONSUM','HCLTECH','COALINDIA','M&M','BRITANNIA','SBILIFE','DIVISLAB','HINDALCO','CIPLA','UPL',
+    'GAIL','SHREECEM','ADANIENT','ADANIGREEN','IOC','TECHM','L&T','BHARATFORG','COLPAL','SIEMENS'
+  ];
+
+  // ----- Auth Functions -----
+  function showAuthPage() {
+    el('authPage').style.display = 'flex';
+    el('mainApp').style.display = 'none';
+  }
+  
+  function showMainApp() {
+    el('authPage').style.display = 'none';
+    el('mainApp').style.display = 'block';
+  }
+  
+  function switchToLogin() {
+    el('loginTab').classList.add('active');
+    el('registerTab').classList.remove('active');
+    el('loginForm').style.display = 'flex';
+    el('registerForm').style.display = 'none';
+    el('loginError').textContent = '';
+  }
+  
+  function switchToRegister() {
+    el('registerTab').classList.add('active');
+    el('loginTab').classList.remove('active');
+    el('registerForm').style.display = 'flex';
+    el('loginForm').style.display = 'none';
+    el('registerError').textContent = '';
+  }
+  
+  function registerPlayer(fullName, email, password) {
+    // Prevent creating multiple accounts from same device/browser
+    const devicePlayer = localStorage.getItem('device_player_id');
+    if(devicePlayer) {
+      return {ok:false,msg:'This browser/device already has an account. Please login with that account or use another device.'};
+    }
+    if(players.length>=TOTAL_PLAYERS) return {ok:false,msg:'All slots full'};
+    if(players.find(p=>p.email===email)) return {ok:false,msg:'Email already registered'};
+    
+    const id = 'p'+Date.now()+Math.floor(Math.random()*999);
+    const player = {
+      id,
+      fullName,
+      email,
+      password,
+      balance:STARTING_BALANCE,
+      holdings:{},
+      active:true,
+      eliminated:false
+    };
+    
+    players.push(player); 
+    localStorage.setItem('device_player_id', id); 
+    loggedInPlayerId = id; 
+    saveState(); 
+    renderPlayersList(); 
+    renderLeaderboard(); 
+    renderAccountArea(); 
+    updateHostUI(); 
+    return {ok:true,player};
+  }
+  
+  function loginPlayer(email, password) {
+    const p = players.find(x=>x.email===email && x.password===password);
+    if(!p) return {ok:false,msg:'Invalid email or password'}; 
+    loggedInPlayerId = p.id; 
+    localStorage.setItem('device_player_id', p.id); 
+    saveState(); 
+    renderAccountArea(); 
+    updateHostUI(); 
+    return {ok:true,p};
+  }
+
+  function logoutPlayer(){ 
+    loggedInPlayerId=null; 
+    localStorage.removeItem('device_player_id'); 
+    saveState(); 
+    renderAccountArea(); 
+    updateHostUI(); 
+    showAuthPage();
+  }
+
+  // ----- Init -----
+  function init(){
+    loadState();
+    if(!stocks || stocks.length!==STOCK_COUNT){
+      stocks = sampleTickers.slice(0,STOCK_COUNT).map(t=>({
+        ticker:t,
+        name:t + ' Ltd',
+        price: Math.round(rand(50,2500)*100)/100,
+        history: [],
+      }));
+      stocks.forEach(s=>s.history.push(s.price));
+    }
+    if(!players || players.length===0){
+      players = [];
+    }
+    
+    // Check if user is already logged in
+    if(loggedInPlayerId) {
+      showMainApp();
+      renderStocks();
+      renderPlayersList();
+      renderLeaderboard();
+      renderAccountArea();
+      updateHostUI();
+    } else {
+      showAuthPage();
+    }
+  }
+
+  // ----- Render -----
+  function renderStocks(){
+    const cont = el('stocksContainer'); cont.innerHTML='';
+    stocks.forEach((s,idx)=>{
+      const div = document.createElement('div'); div.className='stock-item';
+      div.innerHTML = `
+        <div class="stock-left">
+          <div>
+            <div class="ticker">${s.ticker}</div>
+            <div class="small">${s.name}</div>
+          </div>
+        </div>
+        <div style="text-align:right;min-width:240px">
+          <div class="price" id="price-${s.ticker}">${money(s.price)}</div>
+          <div class="small" id="chg-${s.ticker}">(${priceChangeText(s)})</div>
+          <div style="margin-top:6px;display:flex;gap:6px;justify-content:flex-end">
+            <button class="btn" data-ticker="${s.ticker}">Trade / Details</button>
+          </div>
+        </div>
+      `;
+      cont.appendChild(div);
+      div.querySelector('button').addEventListener('click',()=>openTradeModal(s.ticker));
+    });
+  }
+
+  function priceChangeText(s){
+    const hist = s.history; if(hist.length<2) return '0.00%';
+    const prev = hist[hist.length-2];
+    const diff = ((s.price - prev)/prev)*100; return diff>=0?`+${diff.toFixed(2)}%`:`${diff.toFixed(2)}%`;
+  }
+
+  function drawSparkCanvas(canvas, hist){
+    const ctx = canvas.getContext('2d');
+    const w=canvas.width = canvas.clientWidth; const h=canvas.height = canvas.clientHeight;
+    ctx.clearRect(0,0,w,h);
+    const data = hist.slice(-60);
+    const min = Math.min(...data); const max = Math.max(...data);
+    ctx.beginPath();
+    data.forEach((v,i)=>{
+      const x = i/(data.length-1||1)*(w-6)+3; const y = h - ((v-min)/(max-min||1))*(h-6)-3;
+      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    });
+    ctx.strokeStyle = '#60a5fa'; ctx.lineWidth=1.8; ctx.stroke();
+  }
+
+  function renderPlayersList(){
+    const pl = el('playersList'); pl.innerHTML='';
+    for(let i=0;i<TOTAL_PLAYERS;i++){
+      const p = players[i]; const div=document.createElement('div'); div.style.padding='6px';
+      if(p){ div.innerHTML=`<div style="display:flex;justify-content:space-between"><div>${p.fullName}${p.eliminated? ' (eliminated)': p.id===hostId? ' (host)':''}</div><div class="small">${p.active?money(networth(p)):''}</div></div>`; }
+      else { div.innerHTML=`<div class="small">Empty slot ${i+1}</div>` }
+      pl.appendChild(div);
+    }
+  }
+
+  function renderLeaderboard(){
+    const lb = el('leaderboard'); lb.innerHTML='';
+    const activePlayers = players.filter(p=>!p.eliminated);
+    let ranked = activePlayers.slice().sort((a,b)=>networth(b)-networth(a));
+    if(currentRound === ROUND_COUNT) ranked = ranked.slice(0,5);
+    ranked.forEach((p,idx)=>{
+      const r = document.createElement('div'); r.className='leaderboard-row';
+      r.innerHTML = `<div>${idx+1}. ${p.fullName}</div><div>${money(networth(p))}</div>`;
+      lb.appendChild(r);
+    });
+  }
+
+  function renderAccountArea(){
+    const ai = el('accountInfo'); ai.innerHTML='';
+    if(!loggedInPlayerId){ ai.innerHTML = '<div class="small">Not logged in</div>'; el('portfolio').innerHTML=''; return; }
+    const p = players.find(x=>x.id===loggedInPlayerId);
+    if(!p){ ai.innerHTML='Not found'; return; }
+    ai.innerHTML = `<div><strong>${p.fullName}</strong> <div class='small'>Balance: ${money(p.balance)} ${p.id===hostId?'<span class="highlight">(host)</span>':''}</div></div>`;
+    // portfolio - show company, qty, avg
+    const port = el('portfolio'); port.innerHTML='';
+    const keys = Object.keys(p.holdings); if(keys.length===0){ port.innerHTML='<div class="small">No holdings yet</div>'; return; }
+    const table = document.createElement('table'); table.className='table';
+    table.innerHTML = '<thead><tr><th>Company</th><th>Qty</th><th>Avg Price</th><th>Current Value</th></tr></thead>';
+    const tbody = document.createElement('tbody');
+    keys.forEach(t=>{
+      const h = p.holdings[t]; const s = stocks.find(x=>x.ticker===t);
+      const row = document.createElement('tr');
+      row.innerHTML = `<td>${t}</td><td>${h.qty}</td><td>${money(h.avg)}</td><td>${money((s?s.price:0)*h.qty)}</td>`;
+      tbody.appendChild(row);
+    });
+    table.appendChild(tbody); port.appendChild(table);
+    const nw = document.createElement('div'); nw.style.marginTop='8px'; nw.innerHTML = `<strong>Total Networth: ${money(networth(p))}</strong>`; port.appendChild(nw);
+  }
+
+  function renderRoundLog(text){
+    const rl = el('roundLog'); const div=document.createElement('div'); div.className='small'; div.style.padding='6px'; div.innerText = text; rl.prepend(div);
+  }
+
+  function networth(p){
+    let nw = p.balance; for(const t in p.holdings){ const s=stocks.find(x=>x.ticker===t); nw += (s? s.price:0) * p.holdings[t].qty; } return nw;
+  }
+
+  function openTradeModal(ticker){
+    const modal = el('modal'); modal.style.display='flex';
+    const s = stocks.find(x=>x.ticker===ticker);
+    el('modalTitle').innerText = `${ticker} — ${s.name}`;
+    const body = el('modalBody');
+    // compute stats
+    const low = Math.min(...s.history);
+    const high = Math.max(...s.history);
+    const fiftyTwoW = Math.max(...s.history) * (1 + 0.15); // simulated 52-week high (approx)
+    let html = '';
+    html += `<div style="display:flex;gap:12px;align-items:center">
+              <div style="flex:1">
+                <div class='small'>Current Price: <strong id='modalPrice'>${money(s.price)}</strong></div>
+                <div class='small'>Low: ${money(low)} • High: ${money(high)} • 52W High: ${money(fiftyTwoW)}</div>
+              </div>
+              <div style="width:260px"><canvas id='modalChart' style='width:100%;height:120px;border-radius:6px;background:#041021'></canvas></div>
+            </div>`;
+    html += `<hr/>`;
+    html += `<div style='margin-top:8px'><label>Action</label><select id='tradeAction'><option value='buy'>Buy</option><option value='sell'>Sell</option></select></div>`;
+    html += `<div style='margin-top:8px'><label>Quantity</label><input type='number' id='tradeQty' value='1' min='1' /></div>`;
+    html += `<div style='margin-top:8px;display:flex;gap:8px;justify-content:space-between'><div id='tradeWarning' class='small'></div><div><button class='btn' id='confirmTrade'>Confirm</button></div></div>`;
+    body.innerHTML = html;
+    // draw chart
+    const canvas = el('modalChart'); drawSparkCanvas(canvas, s.history);
+
+    const actionEl = document.getElementById('tradeAction'); const qtyEl = document.getElementById('tradeQty'); const warn = document.getElementById('tradeWarning');
+    function updateWarn(){ if(!loggedInPlayerId){ warn.innerText='Please login to trade'; } else { const pl = players.find(x=>x.id===loggedInPlayerId); if(actionEl.value==='sell'){ const owned = (pl.holdings[ticker]||{qty:0}).qty; warn.innerText = `You own ${owned} shares`; qtyEl.max = owned; } else { warn.innerText = '';} } }
+    actionEl.addEventListener('change', updateWarn); qtyEl.addEventListener('input', updateWarn); updateWarn();
+    document.getElementById('confirmTrade').onclick = ()=>{
+      if(!loggedInPlayerId){ alert('Please login to trade.'); return; }
+      const pl = players.find(x=>x.id===loggedInPlayerId);
+      const action = actionEl.value; const qty = Number(qtyEl.value);
+      if(qty<=0){ alert('Enter positive quantity'); return; }
+      if(action==='buy'){
+        const cost = qty * s.price;
+        if(pl.balance<cost){ alert('Insufficient balance'); return; }
+        // update average price
+        const existing = pl.holdings[ticker] || {qty:0,avg:0};
+        const newQty = existing.qty + qty;
+        const newAvg = ((existing.avg * existing.qty) + (s.price * qty)) / newQty;
+        pl.balance -= cost; pl.holdings[ticker] = {qty:newQty, avg: Math.round(newAvg*100)/100};
+      } else {
+        const owned = (pl.holdings[ticker]||{qty:0}).qty; if(owned<qty){ alert('Not enough shares'); return; }
+        // reduce qty
+        pl.holdings[ticker].qty -= qty; pl.balance += qty*s.price;
+        if(pl.holdings[ticker].qty===0) delete pl.holdings[ticker];
+      }
+      saveState(); renderAccountArea(); renderLeaderboard(); alert('Trade executed!'); modal.style.display='none';
+    }
+  }
+
+  el('modalClose').addEventListener('click',()=>{ el('modal').style.display='none'; });
+
+  // ----- Game loop -----
+  function startRound(){
+    if(!hostId || loggedInPlayerId !== hostId){ alert('Only the host can start the round.'); return; }
+    const activeCount = players.filter(p=>!p.eliminated).length;
+    if(activeCount<=1){ alert('Not enough players to continue'); return; }
+    if(currentRound>=ROUND_COUNT){ alert('All rounds completed'); return; }
+    currentRound++; el('roundNum').innerText=currentRound; roundEndTimestamp = Date.now() + ROUND_DURATION_MS;
+    renderRoundLog(`Round ${currentRound} started by ${players.find(p=>p.id===hostId)?.fullName || 'host' }!`);
+    priceInterval = setInterval(updatePrices, PRICE_UPDATE_MS);
+    roundTimer = setInterval(updateTimer,1000);
+    saveState(); updateHostUI();
+  }
+
+  function updatePrices(){
+    stocks.forEach(s=>{
+      const change = s.price*rand(-0.03,0.03); s.price=Math.max(1,Math.round((s.price+change)*100)/100);
+      s.history.push(s.price);
+      const priceEl = el('price-'+s.ticker); if(priceEl) priceEl.innerText = money(s.price);
+      // if change element exists update
+      const chgEl = el('chg-'+s.ticker); if(chgEl) chgEl.innerText = `(${priceChangeText(s)})`;
+    });
+    renderAccountArea(); renderLeaderboard(); saveState();
+  }
+
+  function updateTimer(){
+    const rem = Math.max(0,roundEndTimestamp-Date.now());
+    const m = String(Math.floor(rem/60000)).padStart(2,'0'); const s = String(Math.floor((rem%60000)/1000)).padStart(2,'0');
+    el('timer').innerText = `${m}:${s}`;
+    if(rem<=0){ clearInterval(roundTimer); roundTimer=null; endRound(); }
+  }
+
+  function endRound(){
+    if(priceInterval) { clearInterval(priceInterval); priceInterval=null; }
+    renderRoundLog(`Round ${currentRound} ended.`);
+    const active = players.filter(p=>!p.eliminated);
+    if(currentRound<ROUND_COUNT){
+      const sorted = active.slice().sort((a,b)=>networth(a)-networth(b));
+      const toElim = sorted.slice(0,ELIMINATE_PER_ROUND);
+      toElim.forEach(p=>{ p.eliminated=true; });
+      saveState(); renderPlayersList();
+      alert('Eliminated this round:\n'+toElim.map(p=>p.fullName+' — '+money(networth(p))).join('\n'));
+      renderRoundLog(`Eliminated: ${toElim.map(p=>p.fullName).join(', ')}`);
+      renderLeaderboard();
+    } else {
+      const ranked = active.slice().sort((a,b)=>networth(b)-networth(a));
+      const winners = ranked.slice(0,5);
+      alert('Final Results — Top 5:\n'+winners.map((p,i)=>`${i+1}. ${p.fullName} — ${money(networth(p))}`).join('\n'));
+      const lb = el('leaderboard'); lb.innerHTML='';
+      winners.forEach((p,idx)=>{
+        const r = document.createElement('div'); r.className='leaderboard-row';
+        r.innerHTML = `<div>${idx+1}. ${p.fullName}</div><div>${money(networth(p))}</div>`;
+        lb.appendChild(r);
+      });
+      renderRoundLog('Final Top 5: '+winners.map(p=>p.fullName).join(', '));
+    }
+    updateHostUI();
+  }
+
+  // ----- Host / Lobby -----
+  function createLobby(){
+    if(!loggedInPlayerId){ alert('Login or register first to create lobby/host'); return; }
+    hostId = loggedInPlayerId; saveState(); renderPlayersList(); updateHostUI(); alert('Lobby created. You are the host.');
+  }
+  function transferHost(newHostId){ hostId = newHostId; saveState(); updateHostUI(); }
+  function updateHostUI(){
+    const startBtn = el('startGameBtn');
+    if(hostId && loggedInPlayerId===hostId){ startBtn.disabled=false; } else startBtn.disabled=true;
+  }
+
+  // ----- Auth Event Listeners -----
+  el('showRegister').addEventListener('click', switchToRegister);
+  el('showLogin').addEventListener('click', switchToLogin);
+  el('loginTab').addEventListener('click', switchToLogin);
+  el('registerTab').addEventListener('click', switchToRegister);
+  
+  el('loginForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const email = el('loginEmail').value;
+    const password = el('loginPassword').value;
+    
+    const result = loginPlayer(email, password);
+    if(result.ok) {
+      showMainApp();
+      renderStocks();
+      renderPlayersList();
+      renderLeaderboard();
+      renderAccountArea();
+      updateHostUI();
+    } else {
+      el('loginError').textContent = result.msg;
+    }
+  });
+  
+  el('registerForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const fullName = el('registerFullName').value;
+    const email = el('registerEmail').value;
+    const password = el('registerPassword').value;
+    
+    const result = registerPlayer(fullName, email, password);
+    if(result.ok) {
+      showMainApp();
+      renderStocks();
+      renderPlayersList();
+      renderLeaderboard();
+      renderAccountArea();
+      updateHostUI();
+    } else {
+      el('registerError').textContent = result.msg;
+    }
+  });
+
+  // ----- Game Event Listeners -----
+  el('startGameBtn').addEventListener('click',()=>startRound());
+  el('resetPlayersBtn').addEventListener('click',()=>{
+    if(!confirm('Reset all players (clear players list, keep stocks)?')) return;
+    players = []; hostId = null; loggedInPlayerId = null; localStorage.removeItem('device_player_id'); saveState(); renderPlayersList(); renderLeaderboard(); renderAccountArea(); updateHostUI();
+  });
+  el('createLobbyBtn').addEventListener('click',()=>createLobby());
+  el('logoutBtn').addEventListener('click',()=>{ if(confirm('Logout?')) logoutPlayer(); });
+
+  // ----- Init loop -----
+  init();
+
+})();
+  </script>
+</body>
+</html>
